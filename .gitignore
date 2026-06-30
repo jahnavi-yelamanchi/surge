@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Modal / local caches
+.modal/
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Keep results/ committed, but ignore scratch
+results/scratch/

@@ -1,0 +1,6 @@
+# Local / client-side dependencies (the GPU image pins vLLM separately in modal/app.py)
+modal>=0.64
+httpx>=0.27
+numpy>=1.26
+pandas>=2.2
+matplotlib>=3.8
