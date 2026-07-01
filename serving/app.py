@@ -44,6 +44,10 @@ image = (
         "outlines==0.0.44",
         "httpx==0.27.2",
     )
+    # outlines imports `pyairports`/`pycountry` at init. Modal's default package
+    # mirror only serves a broken pyairports 0.0.1 (no `airports` module), so pull
+    # the real packages straight from upstream PyPI for just this layer.
+    .pip_install("pyairports", "pycountry", index_url="https://pypi.org/simple")
     .run_commands(
         # Fail the image *build* (not a live GPU request) if the guided-decoding
         # stack can't import, so dependency issues surface early and clearly.
