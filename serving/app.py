@@ -37,6 +37,11 @@ image = (
         # get_cached_tokenizer (all_special_tokens_extended). Pin known-good versions.
         "transformers==4.46.3",
         "tokenizers==0.20.3",
+        # vLLM imports `outlines` (its default guided-decoding backend) on the
+        # first request; outlines needs these data packages, which don't install
+        # cleanly from the mirror as transitive deps. Add them explicitly.
+        "pyairports",
+        "pycountry",
         "httpx==0.27.2",
     )
     .env(
