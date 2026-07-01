@@ -52,6 +52,9 @@ image = (
             "VLLM_DO_NOT_TRACK": "1",  # no usage telemetry
         }
     )
+    # Ship our local load generator into the container so the benchmark runs
+    # server-side (client and server share localhost -> no internet jitter).
+    .add_local_python_source("bench")
 )
 
 
@@ -133,7 +136,91 @@ def smoke() -> None:
             proc.kill()
 
 
-@app.function(image=image, gpu=GPU_SMOKE, timeout=60 * 60)
-def sweep() -> None:
-    """M3+: baseline-vs-tuned benchmark sweep. Implemented in a later milestone."""
-    raise NotImplementedError("sweep is implemented in milestone M3/M4")
+# Default load shape for a benchmark point.
+DEFAULT_INPUT_TOKENS = 512
+DEFAULT_OUTPUT_TOKENS = 128
+
+
+@app.function(
+    image=image,
+    gpu=GPU_SMOKE,
+    volumes={HF_CACHE_DIR: hf_cache},
+    timeout=60 * 60,
+)
+def run_benchmark(
+    config_name: str,
+    config_args: list[str],
+    qps: float,
+    duration: float,
+    input_tokens: int,
+    output_tokens: int,
+) -> dict:
+    """Boot vLLM with `config_args`, drive Poisson load at `qps`, return a summary."""
+    import asyncio
+
+    from bench.load_gen import generate_load
+    from bench.metrics import summarize
+
+    proc = start_server(config_args)
+    try:
+        wait_for_health()
+        hf_cache.commit()
+        results, wall = asyncio.run(
+            generate_load(
+                BASE_URL, MODEL_NAME, qps, duration, input_tokens, output_tokens
+            )
+        )
+        summary = summarize(results, wall)
+        summary["config_name"] = config_name
+        summary["config_args"] = config_args
+        summary["qps"] = qps
+        summary["gpu"] = GPU_SMOKE
+        summary["input_tokens"] = input_tokens
+        summary["output_tokens"] = output_tokens
+        return summary
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=30)
+        except Exception:
+            proc.kill()
+
+
+@app.local_entrypoint()
+def sweep(
+    qps: float = 3.0,
+    duration: float = 30.0,
+    input_tokens: int = DEFAULT_INPUT_TOKENS,
+    output_tokens: int = DEFAULT_OUTPUT_TOKENS,
+) -> None:
+    """Run every preset at a single QPS and write one JSON per config locally.
+
+    M3: a single-QPS baseline-vs-tuned comparison to validate the pipeline.
+    M4 upgrades this to a QPS sweep that finds max throughput at a latency SLO.
+    """
+    import json
+    import os
+
+    from serving.configs import CONFIGS
+
+    os.makedirs("results/raw", exist_ok=True)
+    summaries = {}
+    for name, cfg in CONFIGS.items():
+        print(f"[surge] running '{name}' @ {qps} qps for {duration:g}s ...")
+        summary = run_benchmark.remote(
+            name, cfg["args"], qps, duration, input_tokens, output_tokens
+        )
+        summaries[name] = summary
+        path = f"results/raw/{name}_qps{qps:g}.json"
+        with open(path, "w") as f:
+            json.dump(summary, f, indent=2)
+        print(f"[surge] wrote {path}")
+
+    print("\n=== summary ===")
+    for name, s in summaries.items():
+        print(
+            f"{name:9s} tok/s={s['output_token_throughput']:7.1f}  "
+            f"p99 ITL={s['itl_ms']['p99']:6.1f}ms  "
+            f"p99 e2e={s['e2e_ms']['p99']:7.1f}ms  "
+            f"errors={s['num_errors']}"
+        )
