@@ -32,6 +32,11 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "vllm==0.6.3.post1",  # pinned for reproducibility; some knobs vary by version
+        # vLLM 0.6.3 leaves transformers unpinned; the package mirror otherwise
+        # resolves it to transformers 5.x, whose tokenizer API breaks vLLM's
+        # get_cached_tokenizer (all_special_tokens_extended). Pin known-good versions.
+        "transformers==4.46.3",
+        "tokenizers==0.20.3",
         "httpx==0.27.2",
     )
     .env(
