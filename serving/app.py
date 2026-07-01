@@ -37,21 +37,14 @@ image = (
         # get_cached_tokenizer (all_special_tokens_extended). Pin known-good versions.
         "transformers==4.46.3",
         "tokenizers==0.20.3",
-        # outlines is vLLM's default guided-decoding backend, imported lazily on
-        # the first request. Versions >=0.0.45 import `pyairports` at package
-        # init (a dep that won't install cleanly from the mirror); 0.0.44 avoids
-        # that import while satisfying vLLM's `outlines<0.1,>=0.0.43` constraint.
-        "outlines==0.0.44",
         "httpx==0.27.2",
     )
-    # outlines imports `pyairports`/`pycountry` at init. Modal's default package
-    # mirror only serves a broken pyairports 0.0.1 (no `airports` module), so pull
-    # the real packages straight from upstream PyPI for just this layer.
-    .pip_install("pyairports", "pycountry", index_url="https://pypi.org/simple")
     .run_commands(
-        # Fail the image *build* (not a live GPU request) if the guided-decoding
-        # stack can't import, so dependency issues surface early and clearly.
-        "python -c 'import outlines; from outlines.fsm.guide import RegexGuide'"
+        # We run vLLM with the `lm-format-enforcer` guided-decoding backend instead
+        # of the default `outlines` (whose pyairports dep is broken on Modal's
+        # package mirror). We never use guided decoding for benchmarking, so this
+        # just avoids a dead import. Verify the backend lib imports at build time.
+        "python -c 'import lmformatenforcer'"
     )
     .env(
         {
@@ -71,6 +64,11 @@ def start_server(extra_args: list[str] | None = None) -> subprocess.Popen:
         "--port",
         str(VLLM_PORT),
         "--disable-log-requests",
+        # Use lm-format-enforcer instead of the default `outlines` backend, which
+        # has a broken pyairports dep on Modal's mirror. We never request guided
+        # decoding, so this only changes which (unused) module gets imported.
+        "--guided-decoding-backend",
+        "lm-format-enforcer",
     ] + (extra_args or [])
     print(f"[surge] starting: {' '.join(cmd)}")
     return subprocess.Popen(cmd)
