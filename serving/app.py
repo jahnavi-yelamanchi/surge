@@ -37,12 +37,17 @@ image = (
         # get_cached_tokenizer (all_special_tokens_extended). Pin known-good versions.
         "transformers==4.46.3",
         "tokenizers==0.20.3",
-        # vLLM imports `outlines` (its default guided-decoding backend) on the
-        # first request; outlines needs these data packages, which don't install
-        # cleanly from the mirror as transitive deps. Add them explicitly.
-        "pyairports",
-        "pycountry",
+        # outlines is vLLM's default guided-decoding backend, imported lazily on
+        # the first request. Versions >=0.0.45 import `pyairports` at package
+        # init (a dep that won't install cleanly from the mirror); 0.0.44 avoids
+        # that import while satisfying vLLM's `outlines<0.1,>=0.0.43` constraint.
+        "outlines==0.0.44",
         "httpx==0.27.2",
+    )
+    .run_commands(
+        # Fail the image *build* (not a live GPU request) if the guided-decoding
+        # stack can't import, so dependency issues surface early and clearly.
+        "python -c 'import outlines; from outlines.fsm.guide import RegexGuide'"
     )
     .env(
         {
